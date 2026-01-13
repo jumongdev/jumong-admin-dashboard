@@ -1,0 +1,237 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ManagePaymentsPage extends StatefulWidget {
+  const ManagePaymentsPage({super.key});
+
+  @override
+  State<ManagePaymentsPage> createState() => _ManagePaymentsPageState();
+}
+
+class _ManagePaymentsPageState extends State<ManagePaymentsPage> {
+  final supabase = Supabase.instance.client;
+  List<dynamic> _stores = [];
+  String? _selectedStoreId;
+  List<dynamic> _channels = [];
+  bool _isLoading = false;
+  bool _isSaving = false;
+
+  final _nameController = TextEditingController();
+  final _accNumController = TextEditingController();
+  final _accNameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStores();
+  }
+
+  Future<void> _loadStores() async {
+    try {
+      final data = await supabase.from('stores').select('id, name').order('name');
+      if (!mounted) return; // FIX: Check if widget is still here
+      setState(() => _stores = data);
+    } catch (e) {
+      if (!mounted) return;
+      _showError("Failed to load stores: $e");
+    }
+  }
+
+  Future<void> _loadChannels(String storeId) async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await supabase
+          .from('payment_channels')
+          .select()
+          .eq('store_id', storeId)
+          .order('created_at');
+
+      if (!mounted) return; // FIX: Check if widget is still here
+      setState(() => _channels = data);
+    } catch (e) {
+      if (!mounted) return;
+      _showError("Failed to load accounts: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveChannel() async {
+    final name = _nameController.text.trim();
+    if (_selectedStoreId == null) return;
+    if (name.isEmpty) {
+      _showError("Please enter a Channel Name (e.g. GCash)");
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      await supabase.from('payment_channels').insert({
+        'store_id': _selectedStoreId,
+        'name': name,
+        'account_number': _accNumController.text.trim(),
+        'account_name': _accNameController.text.trim(),
+      });
+
+      if (!mounted) return; // FIX: Check if widget is still here
+
+      _nameController.clear();
+      _accNumController.clear();
+      _accNameController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Account saved successfully!")),
+      );
+
+      _loadChannels(_selectedStoreId!);
+    } catch (e) {
+      if (!mounted) return;
+      _showError("Error saving account: $e");
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _confirmDelete(int id, String name) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Account?"),
+        content: Text("Are you sure you want to remove '$name'? This cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await supabase.from('payment_channels').delete().eq('id', id);
+        if (!mounted) return; // FIX: Check if widget is still here
+        _loadChannels(_selectedStoreId!);
+      } catch (e) {
+        if (!mounted) return;
+        _showError("Error deleting: $e");
+      }
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.redAccent)
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // build logic remains the same (keep the .withValues fix from before)
+    return Scaffold(
+      body: Row(
+        children: [
+          // Store List (Left)
+          Container(
+            width: 280,
+            color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text("Manage Stores", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _stores.length,
+                    itemBuilder: (context, i) {
+                      final store = _stores[i];
+                      final isSelected = _selectedStoreId == store['id'];
+                      return ListTile(
+                        leading: Icon(Icons.store, color: isSelected ? Colors.blue : null),
+                        title: Text(store['name']),
+                        selected: isSelected,
+                        onTap: () {
+                          setState(() => _selectedStoreId = store['id']);
+                          _loadChannels(store['id']);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const VerticalDivider(width: 1),
+
+          // Management UI (Right)
+          Expanded(
+            child: _selectedStoreId == null
+                ? const Center(child: Text("Select a store to manage payments"))
+                : Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Payment Methods", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 30),
+
+                  // Input Area
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Row(
+                        children: [
+                          Expanded(child: TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Service Name"))),
+                          const SizedBox(width: 15),
+                          Expanded(child: TextField(controller: _accNameController, decoration: const InputDecoration(labelText: "Account Name"))),
+                          const SizedBox(width: 15),
+                          Expanded(child: TextField(controller: _accNumController, decoration: const InputDecoration(labelText: "Account Number"))),
+                          const SizedBox(width: 20),
+                          ElevatedButton.icon(
+                            onPressed: _isSaving ? null : _saveChannel,
+                            icon: _isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add),
+                            label: const Text("Save"),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // Existing List
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : ListView.builder(
+                      itemCount: _channels.length,
+                      itemBuilder: (context, i) => Card(
+                        child: ListTile(
+                          title: Text(_channels[i]['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text("${_channels[i]['account_name']} • ${_channels[i]['account_number']}"),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () => _confirmDelete(_channels[i]['id'], _channels[i]['name']),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
