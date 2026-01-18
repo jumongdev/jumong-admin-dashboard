@@ -1,3 +1,5 @@
+// lib/pages/product_sub_pages/product_list_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,6 +29,7 @@ class _ProductListPageState extends State<ProductListPage> {
   List<Map<String, dynamic>> _filteredProducts = [];
   List<Map<String, dynamic>> _stores = [];
   List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _payees = []; // NEW: Payee cache
   bool _isLoading = true;
 
   @override
@@ -51,11 +54,14 @@ class _ProductListPageState extends State<ProductListPage> {
     try {
       final storesRes = await supabase.from('stores').select('id, name').order('name');
       final catsRes = await supabase.from('categories').select('id, name').order('name');
+      final payeesRes = await supabase.from('payees').select('id, name').order('name'); // NEW
+
       final productsRes = await supabase.from('products').select('''
             *,
             stores(name),
             categories(name),
             units(name),
+            payees(name),
             price_rules(*, units(name))
           ''').order('name');
 
@@ -64,6 +70,7 @@ class _ProductListPageState extends State<ProductListPage> {
       setState(() {
         _stores = List<Map<String, dynamic>>.from(storesRes);
         _categories = List<Map<String, dynamic>>.from(catsRes);
+        _payees = List<Map<String, dynamic>>.from(payeesRes); // NEW
         _allProducts = List<Map<String, dynamic>>.from(productsRes);
         _applyFilters();
         _isLoading = false;
@@ -187,7 +194,7 @@ class _ProductListPageState extends State<ProductListPage> {
                           ),
                       ],
                     ),
-                    subtitle: Text("${p['stores']?['name'] ?? 'N/A'} | SKU: ${p['sku']}",
+                    subtitle: Text("${p['stores']?['name'] ?? 'N/A'} | SKU: ${p['sku']} | Supp: ${p['payees']?['name'] ?? 'None'}",
                         style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     trailing: Text("₱${(p['base_price'] as num? ?? 0).toStringAsFixed(2)}",
                         style: const TextStyle(
@@ -305,12 +312,15 @@ class _ProductListPageState extends State<ProductListPage> {
     final storesRes = await supabase.from('stores').select('id, name').order('name');
     final catsRes = await supabase.from('categories').select('id, name').order('name');
     final unitsRes = await supabase.from('units').select('id, name').order('name');
+    final payeesRes = await supabase.from('payees').select('id, name').order('name'); // NEW
 
     if (!context.mounted) return;
 
     final allStores = List<Map<String, dynamic>>.from(storesRes);
     final allCategories = List<Map<String, dynamic>>.from(catsRes);
     final allUnits = List<Map<String, dynamic>>.from(unitsRes);
+    final allPayees = List<Map<String, dynamic>>.from(payeesRes); // NEW
+
     List<Map<String, dynamic>> tempRules = List.from(existingRules ?? []);
 
     if (isEditing && existingProduct != null) {
@@ -327,6 +337,7 @@ class _ProductListPageState extends State<ProductListPage> {
 
     String? selectedCategoryId = isEditing ? existingProduct!['category_id']?.toString() : null;
     String? selectedUnitId = isEditing ? existingProduct!['unit_id']?.toString() : null;
+    int? selectedPayeeId = isEditing ? (existingProduct!['payee_id'] as int?) : null; // NEW
 
     Map<String, bool> selectedStores = {
       for (var s in allStores)
@@ -367,7 +378,7 @@ class _ProductListPageState extends State<ProductListPage> {
                           ],
                         ),
                         const SizedBox(height: 20),
-                        _sectionTitle("CATEGORIZATION"),
+                        _sectionTitle("CATEGORIZATION & SUPPLIER"),
                         DropdownButtonFormField<String>(
                           value: selectedCategoryId,
                           dropdownColor: const Color(0xFF1E293B),
@@ -388,6 +399,18 @@ class _ProductListPageState extends State<ProductListPage> {
                               .map((u) => DropdownMenuItem(value: u['id'].toString(), child: Text(u['name'])))
                               .toList(),
                           onChanged: (val) => setDialogState(() => selectedUnitId = val),
+                        ),
+                        const SizedBox(height: 15),
+                        // NEW: Supplier Dropdown
+                        DropdownButtonFormField<int>(
+                          value: selectedPayeeId,
+                          dropdownColor: const Color(0xFF1E293B),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _inputStyle("Supplier / Payee", Icons.business_center_outlined),
+                          items: allPayees
+                              .map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name'])))
+                              .toList(),
+                          onChanged: (val) => setDialogState(() => selectedPayeeId = val),
                         ),
                       ],
                     ),
@@ -528,6 +551,7 @@ class _ProductListPageState extends State<ProductListPage> {
                         'base_price': double.tryParse(_priceController.text) ?? 0.0,
                         'category_id': selectedCategoryId,
                         'unit_id': selectedUnitId,
+                        'payee_id': selectedPayeeId, // NEW
                         'store_id': sId,
                         'stock_quantity': 0,
                       })
@@ -541,6 +565,7 @@ class _ProductListPageState extends State<ProductListPage> {
                       'base_price': double.tryParse(_priceController.text) ?? 0.0,
                       'category_id': selectedCategoryId,
                       'unit_id': selectedUnitId,
+                      'payee_id': selectedPayeeId, // NEW
                     }).eq('sku', sku);
                   } else {
                     final List<Map<String, dynamic>> toInsert = currentSelectedIds
@@ -551,6 +576,7 @@ class _ProductListPageState extends State<ProductListPage> {
                       'base_price': double.tryParse(_priceController.text) ?? 0.0,
                       'category_id': selectedCategoryId,
                       'unit_id': selectedUnitId,
+                      'payee_id': selectedPayeeId, // NEW
                       'store_id': sId,
                       'stock_quantity': 0,
                     })

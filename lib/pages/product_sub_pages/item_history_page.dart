@@ -1,4 +1,3 @@
-// lib/pages/product_sub_pages/item_history_page.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -21,14 +20,19 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
     _fetchHistory();
   }
 
+  // Helper to extract numbers from strings like "850 pcs"
+  double _parseValue(dynamic val) {
+    if (val == null) return 0;
+    // Remove " pcs" or any other text and keep only numbers/dots
+    String cleanStr = val.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(cleanStr) ?? 0;
+  }
+
   Future<void> _fetchHistory() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
-      // FIX: Removed 'auth_users' join which was causing the relationship error.
-      // We join products and stores.
-      // If you need the staff name, it must be joined via a table in the 'public' schema (like profiles).
       final res = await supabase
           .from('product_logs')
           .select('''
@@ -46,7 +50,7 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
         });
       }
     } catch (e) {
-      debugPrint("Error fetching history: $e");
+      debugPrint("Fetch Error: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -71,24 +75,38 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
           itemCount: _logs.length,
           itemBuilder: (context, index) {
             final log = _logs[index];
-            final String type = log['change_type'] ?? 'Edit';
-            final date = DateTime.parse(log['created_at']).toLocal();
+            final String type = log['change_type'] ?? 'Stock Update';
+
+            // Format Date safely
+            DateTime date;
+            try {
+              date = DateTime.parse(log['created_at']).toLocal();
+            } catch (_) {
+              date = DateTime.now();
+            }
+
+            // Parse numbers from strings like "850 pcs"
+            final double oldVal = _parseValue(log['old_value']);
+            final double newVal = _parseValue(log['new_value']);
+            final bool isIncrease = newVal > oldVal;
+            final double diff = (newVal - oldVal).abs();
 
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 color: surfaceSlate,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
               ),
               child: ListTile(
-                leading: _getLeadingIcon(type),
+                leading: _getLeadingIcon(type, isIncrease),
                 title: Row(
                   children: [
                     Expanded(
                       child: Text(
                         log['products']?['name'] ?? 'Unknown Item',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Text(
@@ -100,32 +118,48 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text("Stock Move: ", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                        // Display the raw strings from DB ("850 pcs")
                         Text(
-                          "${log['old_value']} ➔ ${log['new_value']}",
-                          style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                          "${log['old_value'] ?? '0'} ➔ ${log['new_value'] ?? '0'}",
+                          style: TextStyle(
+                              color: isIncrease ? Colors.greenAccent : Colors.redAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold
+                          ),
                         ),
-                      ],
-                    ),
-                    if (log['notes'] != null && log['notes'].toString().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
+                        const SizedBox(width: 8),
+                        // Calculate difference
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(
-                              color: Colors.black12,
-                              borderRadius: BorderRadius.circular(6)
+                            color: (isIncrease ? Colors.green : Colors.red).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            log['notes'],
-                            style: const TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic),
+                            "${isIncrease ? '+' : '-'}${diff.toStringAsFixed(0)}",
+                            style: TextStyle(
+                                color: isIncrease ? Colors.greenAccent : Colors.redAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold
+                            ),
                           ),
+                        )
+                      ],
+                    ),
+
+                    if (log['notes'] != null && log['notes'].toString().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          log['notes'],
+                          style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
                         ),
                       ),
-                    const SizedBox(height: 8),
+
+                    const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -149,33 +183,29 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
     );
   }
 
-  Widget _getLeadingIcon(String type) {
+  Widget _getLeadingIcon(String type, bool isIncrease) {
     IconData icon;
     Color color;
 
     switch (type.toLowerCase()) {
-      case 'request approved':
-        icon = Icons.add_business_rounded;
-        color = Colors.blueAccent;
-        break;
       case 'sale':
-        icon = Icons.shopping_basket_rounded;
+        icon = Icons.shopping_basket;
         color = Colors.orangeAccent;
         break;
-      case 'stock update':
       case 'stock adjustment':
-        icon = Icons.tune_rounded;
-        color = Colors.purpleAccent;
+      case 'request approved':
+        icon = isIncrease ? Icons.add_circle_outline : Icons.remove_circle_outline;
+        color = isIncrease ? Colors.greenAccent : Colors.redAccent;
         break;
       default:
-        icon = Icons.history_rounded;
+        icon = Icons.history;
         color = Colors.white24;
     }
 
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: color, size: 20),

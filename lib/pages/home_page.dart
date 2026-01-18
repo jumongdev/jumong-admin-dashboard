@@ -110,7 +110,7 @@ class _HomePageState extends State<HomePage> {
               NavigationRailDestination(icon: Icon(Icons.store_mall_directory_outlined), selectedIcon: Icon(Icons.store_mall_directory), label: Text('Stores')),
               NavigationRailDestination(icon: Icon(Icons.account_balance_wallet_outlined), label: Text('Payments')),
               NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Reports')),
-            ],
+                          ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
           Expanded(

@@ -1,9 +1,14 @@
+// lib/pages/products_page.dart
+
 import 'package:flutter/material.dart';
 import 'product_sub_pages/product_list_page.dart';
 import 'product_sub_pages/approve_request_page.dart';
 import 'product_sub_pages/available_stock_page.dart';
 import 'product_sub_pages/item_history_page.dart';
 import 'product_sub_pages/stock_adjustment_page.dart';
+import 'product_sub_pages/category_list_page.dart';
+import 'product_sub_pages/unit_list_page.dart';
+import 'product_sub_pages/payee_list_page.dart'; // 1. ADD THIS IMPORT
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
@@ -15,25 +20,27 @@ class ProductsPage extends StatefulWidget {
 class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  // The widgets for each tab.
-  // Note: We remove 'const' from pages that maintain their own state or fetch data.
+  // 2. UPDATED LIST: Added PayeeListPage to the contents
   final List<Widget> _tabsContent = [
     const ProductListPage(),
     const AvailableStockPage(),
     const StockAdjustmentPage(),
-    const ItemHistoryPage(),     // This is the page we just updated
+    const ItemHistoryPage(),
     const ApproveRequestPage(),
+    const CategoryListPage(),
+    const UnitListPage(),
+    const PayeeListPage(), // <--- NEW TAB CONTENT
   ];
 
   @override
   void initState() {
     super.initState();
+    // Length is now 8
     _tabController = TabController(length: _tabsContent.length, vsync: this);
 
-    // Optional: Refresh data when switching to the History tab
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
-        setState(() {}); // Triggers a rebuild of the current tab
+        setState(() {});
       }
     });
   }
@@ -72,18 +79,21 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
           labelColor: primaryIndigo,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           unselectedLabelColor: Colors.white38,
+          // 3. UPDATED TABS: Added the Supplier/Payee tab
           tabs: const [
             Tab(icon: Icon(Icons.inventory_sharp), text: 'Catalog'),
             Tab(icon: Icon(Icons.dashboard_customize_outlined), text: 'Available Stock'),
             Tab(icon: Icon(Icons.settings_input_component_outlined), text: 'Adjustment'),
-            Tab(icon: Icon(Icons.manage_search_outlined), text: 'Audit Trail'), // Renamed to Audit Trail
+            Tab(icon: Icon(Icons.manage_search_outlined), text: 'Audit Trail'),
             Tab(icon: Icon(Icons.fact_check_outlined), text: 'Approvals'),
+            Tab(icon: Icon(Icons.category), text: 'Category'),
+            Tab(icon: Icon(Icons.ad_units_outlined), text: 'Unit'),
+            Tab(icon: Icon(Icons.person_pin_outlined), text: 'Suppliers'), // <--- NEW TAB
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        // This ensures the pages stay in memory so they don't reload every time you tap
         physics: const NeverScrollableScrollPhysics(),
         children: _tabsContent,
       ),
