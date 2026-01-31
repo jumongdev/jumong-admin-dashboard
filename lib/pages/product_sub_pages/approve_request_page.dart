@@ -1,15 +1,19 @@
+// lib/pages/product_sub_pages/approve_request_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApproveRequestPage extends StatefulWidget {
-  const ApproveRequestPage({super.key});@override
+  const ApproveRequestPage({super.key});
+  @override
   State<ApproveRequestPage> createState() => _ApproveRequestPageState();
 }
 
 class _ApproveRequestPageState extends State<ApproveRequestPage> {
+  // ... (Keep existing State variables and initState/dispose)
   bool _isLoading = true;
-  bool _showHistory = false; // Toggle between Pending and History
+  bool _showHistory = false;
   List<Map<String, dynamic>> _requests = [];
 
   @override
@@ -18,24 +22,19 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     _fetchRequests();
   }
 
-  /// FIXED: Reordered query logic to apply filters BEFORE transforms (.order)
   Future<void> _fetchRequests() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final supabase = Supabase.instance.client;
-
-      // 1. Start with the base select
       var query = supabase.from('stock_requests').select('*, stores(name)');
 
-      // 2. Apply Filters first
       if (_showHistory) {
         query = query.neq('status', 'pending');
       } else {
         query = query.eq('status', 'pending');
       }
 
-      // 3. Apply Transforms last (Order)
       final data = await query.order('created_at', ascending: false);
 
       if (mounted) {
@@ -50,7 +49,9 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     }
   }
 
+  // ... (Keep _editItemQuantity helper logic)
   void _editItemQuantity(Map<String, dynamic> request, int itemIndex) {
+    // ... (Use same code as before for the dialog) ...
     final List items = List.from(request['items']);
     final TextEditingController qtyController =
     TextEditingController(text: items[itemIndex]['quantity'].toString());
@@ -69,20 +70,16 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
             labelText: "Correct Quantity",
-            labelStyle: TextStyle(color: Colors.white54),
             filled: true,
             fillColor: Colors.black26,
-            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white10)),
-            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF6366F1))),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+            child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
             onPressed: () async {
               final newQty = int.tryParse(qtyController.text) ?? 0;
               items[itemIndex]['quantity'] = newQty;
@@ -102,6 +99,7 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     );
   }
 
+  // FIX: Update INVENTORY logic
   Future<void> _handleApproval(Map<String, dynamic> request) async {
     setState(() => _isLoading = true);
     final supabase = Supabase.instance.client;
@@ -109,33 +107,41 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     try {
       final List items = request['items'];
       final String? adminId = supabase.auth.currentUser?.id;
-      final String? storeId = request['store_id'];
+      final String storeId = request['store_id']; // This is critical
 
       for (var item in items) {
-        final prodRes = await supabase
-            .from('products')
-            .select('stock_quantity')
-            .eq('id', item['product_id'])
-            .single();
+        final productId = item['product_id'];
+        final int incomingQty = item['quantity'] ?? 0;
 
-        int currentQty = prodRes['stock_quantity'] ?? 0;
-        int incomingQty = item['quantity'] ?? 0;
+        // 1. Check current inventory for this store/product combo
+        final invRes = await supabase
+            .from('inventory')
+            .select('stock_quantity')
+            .eq('product_id', productId)
+            .eq('store_id', storeId)
+            .maybeSingle();
+
+        int currentQty = invRes != null ? invRes['stock_quantity'] : 0;
         int newTotalQty = currentQty + incomingQty;
 
+        // 2. Update INVENTORY table
         await supabase
-            .from('products')
-            .update({'stock_quantity': newTotalQty})
-            .eq('id', item['product_id']);
+            .from('inventory')
+            .upsert({
+          'store_id': storeId,
+          'product_id': productId,
+          'stock_quantity': newTotalQty
+        }, onConflict: 'store_id, product_id'); // Ensure unique constraint in DB if possible, otherwise Supabase handles logic
 
-        // Insert into History Logs
+        // 3. Insert into History Logs
         await supabase.from('product_logs').insert({
-          'product_id': item['product_id'],
+          'product_id': productId,
           'store_id': storeId,
           'user_id': adminId,
           'change_type': 'Request Approved',
           'old_value': '$currentQty pcs',
           'new_value': '$newTotalQty pcs',
-          'notes': 'Added $incomingQty pcs (DR: ${request['dr_number']} via ${request['delivery_name']})',
+          'notes': 'Added $incomingQty pcs (DR: ${request['dr_number']})',
         });
       }
 
@@ -157,6 +163,7 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     }
   }
 
+  // ... (Rest of UI code remains exactly the same as original)
   Future<void> _handleReject(String requestId) async {
     await Supabase.instance.client
         .from('stock_requests')
@@ -181,8 +188,6 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
             children: [
               Text(_showHistory ? "REQUEST HISTORY" : "STOCK RECEIVING APPROVALS",
                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-
-              // --- VIEW TOGGLE ---
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(color: surfaceSlate, borderRadius: BorderRadius.circular(8)),
@@ -315,9 +320,9 @@ class _ApproveRequestPageState extends State<ApproveRequestPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(status.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );

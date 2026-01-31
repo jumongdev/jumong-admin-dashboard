@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/user_role.dart';
 import 'employee_management_page.dart';
+import 'customer_management_page.dart';
 import 'login_page.dart';
 import 'checks_dashboard_page.dart';
 import 'store_management_page.dart';
@@ -53,7 +54,8 @@ class _HomePageState extends State<HomePage> {
     const ChecksDashboardPage(),       // Index 2
     const StoreManagementPage(),       // Index 3
     const ManagePaymentsPage(),        // Index 4
-    const Center(child: Text('Reports Page - Coming Soon!', style: TextStyle(fontSize: 24))), // Index 5
+    const CustomerManagementPage(),    // Index 5
+    const Center(child: Text('Reports Page - Coming Soon!', style: TextStyle(fontSize: 24))), // Index 6
   ];
 
   @override
@@ -109,8 +111,9 @@ class _HomePageState extends State<HomePage> {
               NavigationRailDestination(icon: Icon(Icons.request_quote_outlined), selectedIcon: Icon(Icons.request_quote), label: Text('Checks')),
               NavigationRailDestination(icon: Icon(Icons.store_mall_directory_outlined), selectedIcon: Icon(Icons.store_mall_directory), label: Text('Stores')),
               NavigationRailDestination(icon: Icon(Icons.account_balance_wallet_outlined), label: Text('Payments')),
+              NavigationRailDestination(icon: Icon(Icons.people_alt_outlined), selectedIcon: Icon(Icons.people_alt), label: Text('Customers')),
               NavigationRailDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: Text('Reports')),
-                          ],
+            ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
           Expanded(

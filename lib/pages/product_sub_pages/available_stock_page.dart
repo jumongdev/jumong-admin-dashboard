@@ -39,20 +39,27 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
     }
   }
 
-  // FIXED: Correctly handling the Supabase Stream Builder types
+  // FIX: Stream from 'inventory' table instead of 'products'
   Stream<List<Map<String, dynamic>>> _getStockStream() {
-    // 1. Start the stream by defining the primary key
-    final streamBuilder = _supabase.from('products').stream(primaryKey: ['id']);
+    // 1. We stream inventory rows
+    final streamBuilder = _supabase
+        .from('inventory')
+        .stream(primaryKey: ['id']);
 
-    // 2. Apply the filter if a store is selected
+    // 2. Filter by store (Inventory MUST have store_id)
     if (_selectedStoreId != null) {
       return streamBuilder
           .eq('store_id', _selectedStoreId!)
           .order('stock_quantity', ascending: true);
     }
 
-    // 3. Fallback if no store selected (though admin usually has one selected)
     return streamBuilder.order('stock_quantity', ascending: true);
+  }
+
+  // FIX: Fetch product details separately since Stream join is tricky in Supabase Flutter
+  Future<Map<String, dynamic>> _getProductDetails(String productId) async {
+    final res = await _supabase.from('products').select('name, sku').eq('id', productId).maybeSingle();
+    return res ?? {'name': 'Unknown', 'sku': 'N/A'};
   }
 
   @override
@@ -79,24 +86,36 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
                   return Center(child: Text("Stream Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
                 }
 
-                final products = snapshot.data ?? [];
+                final inventoryItems = snapshot.data ?? [];
 
-                // Client-side search filtering
-                final filtered = products.where((p) {
-                  final nameMatch = p['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
-                  final skuMatch = p['sku'].toString().contains(_searchQuery);
-                  return nameMatch || skuMatch;
-                }).toList();
-
-                if (filtered.isEmpty) {
-                  return const Center(child: Text("No products found in this branch.", style: TextStyle(color: Colors.white24)));
+                if (inventoryItems.isEmpty) {
+                  return const Center(child: Text("No items in inventory for this branch.", style: TextStyle(color: Colors.white24)));
                 }
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(24),
-                  itemCount: filtered.length,
+                  itemCount: inventoryItems.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _buildStockCard(filtered[index]),
+                  itemBuilder: (context, index) {
+                    final item = inventoryItems[index];
+                    // Fetch product details asynchronously for each item
+                    return FutureBuilder<Map<String, dynamic>>(
+                      future: _getProductDetails(item['product_id']),
+                      builder: (context, prodSnapshot) {
+                        if (!prodSnapshot.hasData) return const SizedBox.shrink();
+
+                        final product = prodSnapshot.data!;
+                        // Filter Logic (Search)
+                        final name = product['name'].toString().toLowerCase();
+                        final sku = product['sku'].toString();
+                        if (_searchQuery.isNotEmpty && !name.contains(_searchQuery.toLowerCase()) && !sku.contains(_searchQuery)) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return _buildStockCard(product, item['stock_quantity']);
+                      },
+                    );
+                  },
                 );
               },
             ),
@@ -115,7 +134,6 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
       ),
       child: Row(
         children: [
-          // Store Selector Dropdown
           Expanded(
             flex: 2,
             child: Container(
@@ -144,7 +162,6 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
             ),
           ),
           const SizedBox(width: 16),
-          // Search Bar
           Expanded(
             flex: 3,
             child: TextField(
@@ -166,9 +183,7 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
     );
   }
 
-  Widget _buildStockCard(Map<String, dynamic> product) {
-    final int stock = (product['stock_quantity'] as num? ?? 0).toInt();
-
+  Widget _buildStockCard(Map<String, dynamic> product, int stock) {
     Color statusColor = stock <= 0
         ? Colors.redAccent
         : (stock <= 20 ? Colors.orangeAccent : Colors.greenAccent);
@@ -205,7 +220,7 @@ class _AvailableStockPageState extends State<AvailableStockPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
+              color: statusColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(

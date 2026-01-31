@@ -1,4 +1,6 @@
-import 'dart:async'; // 1. Added for Timer/Debouncing
+// lib/pages/product_sub_pages/stock_adjustment_page.dart
+
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,13 +18,14 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
   final _searchController = TextEditingController();
   String? _selectedStoreId;
   String? _selectedCategoryId;
-  Timer? _debounce; // 2. Added for live search control
+  Timer? _debounce;
 
   // Selection Data
   List<Map<String, dynamic>> _stores = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _foundProducts = [];
   Map<String, dynamic>? _selectedProduct;
+  int _currentInventoryStock = 0; // NEW: Track real stock
 
   // Adjustment Logic
   final _qtyController = TextEditingController();
@@ -39,7 +42,7 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
 
   @override
   void dispose() {
-    _debounce?.cancel(); // 3. Cancel timer on close
+    _debounce?.cancel();
     _searchController.dispose();
     _qtyController.dispose();
     super.dispose();
@@ -51,30 +54,57 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
     setState(() {
       _stores = List<Map<String, dynamic>>.from(s);
       _categories = List<Map<String, dynamic>>.from(c);
+      if (_stores.isNotEmpty) _selectedStoreId = _stores[0]['id']; // Default to first store
     });
   }
 
   Future<void> _searchProducts() async {
-    // 4. Improved logic: don't search if empty, just clear list
     if (_searchController.text.trim().isEmpty) {
       setState(() => _foundProducts = []);
+      return;
+    }
+    if (_selectedStoreId == null) {
+      _showError("Please select a store first.");
       return;
     }
 
     setState(() => _isLoading = true);
 
-    var query = supabase.from('products').select('*, stores(name), categories(name)');
+    try {
+      // 1. Find products matching query
+      var query = supabase.from('products').select('*, categories(name)');
+      if (_selectedCategoryId != null) query = query.eq('category_id', _selectedCategoryId!);
+      query = query.or('name.ilike.%${_searchController.text}%,sku.ilike.%${_searchController.text}%');
+      final productsRes = await query.limit(20);
 
-    if (_selectedStoreId != null) query = query.eq('store_id', _selectedStoreId!);
-    if (_selectedCategoryId != null) query = query.eq('category_id', _selectedCategoryId!);
+      // 2. Fetch INVENTORY for these products at the SELECTED STORE
+      List<Map<String, dynamic>> results = [];
 
-    query = query.or('name.ilike.%${_searchController.text}%,sku.ilike.%${_searchController.text}%');
+      for (var p in productsRes) {
+        final invRes = await supabase
+            .from('inventory')
+            .select('stock_quantity')
+            .eq('product_id', p['id'])
+            .eq('store_id', _selectedStoreId!)
+            .maybeSingle();
 
-    final res = await query.limit(20);
-    setState(() {
-      _foundProducts = List<Map<String, dynamic>>.from(res);
-      _isLoading = false;
-    });
+        final int stock = invRes != null ? invRes['stock_quantity'] : 0;
+
+        results.add({
+          ...p,
+          'real_stock': stock, // Attach correct stock
+          'store_name': _stores.firstWhere((s) => s['id'] == _selectedStoreId)['name']
+        });
+      }
+
+      setState(() {
+        _foundProducts = results;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Search Error: $e");
+      setState(() => _isLoading = false);
+    }
   }
 
   void _showError(String message) {
@@ -102,15 +132,10 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
       return;
     }
 
-    final int currentQty = (_selectedProduct!['stock_quantity'] as num).toInt();
+    final int currentQty = _selectedProduct!['real_stock'];
 
     if (_adjustmentType == 'REDUCE' && changeQty > currentQty) {
-      _showError(
-          "Insufficient Stock!\n\n"
-              "Current available: $currentQty pcs\n"
-              "Attempted to deduct: $changeQty pcs\n\n"
-              "You cannot deduct more than what is currently in stock."
-      );
+      _showError("Insufficient Stock! Current: $currentQty pcs");
       return;
     }
 
@@ -119,13 +144,17 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
     setState(() => _isLoading = true);
 
     try {
-      await supabase.from('products').update({
+      // FIX: Update INVENTORY table
+      await supabase.from('inventory').upsert({
+        'store_id': _selectedStoreId,
+        'product_id': _selectedProduct!['id'],
         'stock_quantity': newQty
-      }).eq('id', _selectedProduct!['id']);
+      }); // upsert creates it if missing
 
+      // Log it
       await supabase.from('product_logs').insert({
         'product_id': _selectedProduct!['id'],
-        'store_id': _selectedProduct!['store_id'],
+        'store_id': _selectedStoreId,
         'user_id': supabase.auth.currentUser?.id,
         'change_type': 'Stock Adjustment',
         'old_value': "$currentQty pcs",
@@ -167,7 +196,7 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
                 _buildSearchHeader(),
                 const SizedBox(height: 15),
                 Expanded(
-                  child: _isLoading && _foundProducts.isEmpty
+                  child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : ListView.builder(
                     itemCount: _foundProducts.length,
@@ -175,11 +204,11 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
                       final p = _foundProducts[i];
                       bool isSelected = _selectedProduct?['id'] == p['id'];
                       return Card(
-                        color: isSelected ? primaryIndigo.withOpacity(0.2) : surfaceSlate,
+                        color: isSelected ? primaryIndigo.withValues(alpha: 0.2) : surfaceSlate,
                         child: ListTile(
                           title: Text(p['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          subtitle: Text("SKU: ${p['sku']} | Current: ${p['stock_quantity']} pcs", style: const TextStyle(color: Colors.white54)),
-                          trailing: Text(p['stores']?['name'] ?? '', style: const TextStyle(color: primaryIndigo, fontSize: 10)),
+                          subtitle: Text("SKU: ${p['sku']} | Current: ${p['real_stock']} pcs", style: const TextStyle(color: Colors.white54)),
+                          trailing: Text(p['store_name'] ?? '', style: const TextStyle(color: primaryIndigo, fontSize: 10)),
                           onTap: () => setState(() => _selectedProduct = p),
                         ),
                       );
@@ -193,7 +222,7 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
           Expanded(
             flex: 3,
             child: _selectedProduct == null
-                ? const Center(child: Text("Select an item from the list", style: TextStyle(color: Colors.white24)))
+                ? const Center(child: Text("Select an item to adjust", style: TextStyle(color: Colors.white24)))
                 : Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(color: surfaceSlate, borderRadius: BorderRadius.circular(16)),
@@ -202,8 +231,10 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
                 children: [
                   Text(_selectedProduct!['name'], style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text("At: ${_selectedProduct!['stores']?['name']}", style: const TextStyle(color: primaryIndigo)),
+                  Text("Current Stock: ${_selectedProduct!['real_stock']}", style: const TextStyle(color: primaryIndigo, fontSize: 20, fontWeight: FontWeight.bold)),
                   const Divider(height: 40, color: Colors.white10),
+
+                  // ... Rest of UI same as before ...
                   const Text("1. DIRECTION", style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1)),
                   const SizedBox(height: 10),
                   Row(
@@ -254,9 +285,22 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
   Widget _buildSearchHeader() {
     return Column(
       children: [
+        Row(
+          children: [
+            Expanded(child: _filterDrop("Store", _stores, _selectedStoreId, (v) {
+              setState(() => _selectedStoreId = v);
+              // Clear previous results when store changes to avoid confusion
+              setState(() { _foundProducts = []; _selectedProduct = null; });
+            })),
+            const SizedBox(width: 10),
+            Expanded(child: _filterDrop("Category", _categories, _selectedCategoryId, (v) {
+              setState(() => _selectedCategoryId = v);
+            })),
+          ],
+        ),
+        const SizedBox(height: 10),
         TextField(
           controller: _searchController,
-          // 5. Added onCHanged with Debouncer
           onChanged: (value) {
             if (_debounce?.isActive ?? false) _debounce!.cancel();
             _debounce = Timer(const Duration(milliseconds: 500), () {
@@ -271,21 +315,6 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
           ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            // 6. Updated Filter triggering
-            Expanded(child: _filterDrop("Store", _stores, _selectedStoreId, (v) {
-              setState(() => _selectedStoreId = v);
-              _searchProducts(); // Instant search on filter change
-            })),
-            const SizedBox(width: 10),
-            Expanded(child: _filterDrop("Category", _categories, _selectedCategoryId, (v) {
-              setState(() => _selectedCategoryId = v);
-              _searchProducts(); // Instant search on filter change
-            })),
-          ],
-        )
       ],
     );
   }
@@ -300,10 +329,8 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
         filled: true, fillColor: const Color(0xFF0F172A),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
       ),
-      items: [
-        DropdownMenuItem(value: null, child: Text("All $label")),
-        ...items.map((i) => DropdownMenuItem(value: i['id'].toString(), child: Text(i['name'])))
-      ],
+      hint: Text("Select $label", style: const TextStyle(color: Colors.white54)),
+      items: items.map((i) => DropdownMenuItem(value: i['id'].toString(), child: Text(i['name']))).toList(),
       onChanged: onCh,
     );
   }
@@ -319,7 +346,7 @@ class _StockAdjustmentPageState extends State<StockAdjustmentPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-              color: active ? color.withOpacity(0.2) : Colors.transparent,
+              color: active ? color.withValues(alpha: 0.2) : Colors.transparent,
               border: Border.all(color: active ? color : Colors.white10),
               borderRadius: BorderRadius.circular(8)
           ),

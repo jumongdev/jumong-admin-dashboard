@@ -1,4 +1,4 @@
-// lib/pages/add_product_page.dart
+// lib/pages/product_sub_pages/add_product_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -49,15 +49,28 @@ class _AddProductPageState extends State<AddProductPage> {
     setState(() { _isLoading = true; });
 
     try {
-      await Supabase.instance.client.from('products').insert({
+      final supabase = Supabase.instance.client;
+
+      // 1. Insert Product (NO STOCK QUANTITY HERE)
+      final productRes = await supabase.from('products').insert({
         'sku': _skuController.text.trim(),
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'base_price': double.tryParse(_basePriceController.text.trim()) ?? 0.0,
-        'stock_quantity': int.tryParse(_stockController.text.trim()) ?? 0,
+        // 'stock_quantity': REMOVED - We use inventory table now
         'category': _categoryController.text.trim(),
         'image_url': _imageUrlController.text.trim(),
-        'store_id': _selectedStoreId, // Critical for Admin multi-store
+        'store_id': _selectedStoreId,
+      }).select().single();
+
+      final newProductId = productRes['id'];
+      final int initialStock = int.tryParse(_stockController.text.trim()) ?? 0;
+
+      // 2. Insert into INVENTORY Table
+      await supabase.from('inventory').insert({
+        'store_id': _selectedStoreId,
+        'product_id': newProductId,
+        'stock_quantity': initialStock,
       });
 
       if (!mounted) return;
@@ -84,7 +97,7 @@ class _AddProductPageState extends State<AddProductPage> {
       ),
       body: Center(
         child: Container(
-          width: 900, // Fixed width for a professional desktop "Form" look
+          width: 900,
           margin: const EdgeInsets.symmetric(vertical: 40),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
@@ -101,7 +114,6 @@ class _AddProductPageState extends State<AddProductPage> {
                   const Text("Product Information", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 24),
 
-                  // Row 1: Store Selection (Full Width)
                   _buildLabel("Assign to Store Branch *"),
                   DropdownButtonFormField<String>(
                     dropdownColor: surfaceSlate,
@@ -114,7 +126,6 @@ class _AddProductPageState extends State<AddProductPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Row 2: Name and SKU
                   Row(
                     children: [
                       Expanded(child: _buildTextField("Product Name *", _nameController, Icons.label, (v) => v!.isEmpty ? "Required" : null)),
@@ -124,17 +135,16 @@ class _AddProductPageState extends State<AddProductPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Row 3: Price and Stock
                   Row(
                     children: [
                       Expanded(child: _buildTextField("Base Price (₱) *", _basePriceController, Icons.payments, (v) => v!.isEmpty ? "Required" : null, isNumber: true)),
                       const SizedBox(width: 20),
-                      Expanded(child: _buildTextField("Opening Stock", _stockController, Icons.inventory, null, isNumber: true)),
+                      // This field now populates the inventory table
+                      Expanded(child: _buildTextField("Opening Stock (Inventory)", _stockController, Icons.inventory, null, isNumber: true)),
                     ],
                   ),
                   const SizedBox(height: 20),
 
-                  // Row 4: Category and Image URL
                   Row(
                     children: [
                       Expanded(child: _buildTextField("Category", _categoryController, Icons.category, null)),
@@ -144,12 +154,10 @@ class _AddProductPageState extends State<AddProductPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Row 5: Description
                   _buildTextField("Description", _descriptionController, Icons.description, null, maxLines: 3),
 
                   const SizedBox(height: 40),
 
-                  // Action Buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [

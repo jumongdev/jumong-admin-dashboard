@@ -29,7 +29,7 @@ class _ProductListPageState extends State<ProductListPage> {
   List<Map<String, dynamic>> _filteredProducts = [];
   List<Map<String, dynamic>> _stores = [];
   List<Map<String, dynamic>> _categories = [];
-  List<Map<String, dynamic>> _payees = []; // NEW: Payee cache
+  // REMOVED: _payees field was unused
   bool _isLoading = true;
 
   @override
@@ -70,7 +70,7 @@ class _ProductListPageState extends State<ProductListPage> {
       setState(() {
         _stores = List<Map<String, dynamic>>.from(storesRes);
         _categories = List<Map<String, dynamic>>.from(catsRes);
-        _payees = List<Map<String, dynamic>>.from(payeesRes); // NEW
+        // REMOVED: _payees assignment (unused)
         _allProducts = List<Map<String, dynamic>>.from(productsRes);
         _applyFilters();
         _isLoading = false;
@@ -261,7 +261,7 @@ class _ProductListPageState extends State<ProductListPage> {
 
   Widget _buildFilterDropdown(String hint, List<Map<String, dynamic>> items, String? value, Function(String?) onChanged) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       dropdownColor: const Color(0xFF1E293B),
       style: const TextStyle(color: Colors.white, fontSize: 13),
       decoration: InputDecoration(
@@ -380,7 +380,7 @@ class _ProductListPageState extends State<ProductListPage> {
                         const SizedBox(height: 20),
                         _sectionTitle("CATEGORIZATION & SUPPLIER"),
                         DropdownButtonFormField<String>(
-                          value: selectedCategoryId,
+                          initialValue: selectedCategoryId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Category", Icons.category),
@@ -391,7 +391,7 @@ class _ProductListPageState extends State<ProductListPage> {
                         ),
                         const SizedBox(height: 15),
                         DropdownButtonFormField<String>(
-                          value: selectedUnitId,
+                          initialValue: selectedUnitId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Base Unit", Icons.straighten),
@@ -403,7 +403,7 @@ class _ProductListPageState extends State<ProductListPage> {
                         const SizedBox(height: 15),
                         // NEW: Supplier Dropdown
                         DropdownButtonFormField<int>(
-                          value: selectedPayeeId,
+                          initialValue: selectedPayeeId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Supplier / Payee", Icons.business_center_outlined),
@@ -628,6 +628,7 @@ class _ProductListPageState extends State<ProductListPage> {
     final priceController = TextEditingController();
     String? selectedUnitId;
 
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(

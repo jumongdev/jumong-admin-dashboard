@@ -96,7 +96,7 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
               decoration: BoxDecoration(
                 color: surfaceSlate,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
               ),
               child: ListTile(
                 leading: _getLeadingIcon(type, isIncrease),
@@ -135,7 +135,7 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(
-                            color: (isIncrease ? Colors.green : Colors.red).withOpacity(0.1),
+                            color: (isIncrease ? Colors.green : Colors.red).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -205,7 +205,7 @@ class _ItemHistoryPageState extends State<ItemHistoryPage> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: color, size: 20),
