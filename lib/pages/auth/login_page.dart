@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // For our SVG logo
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'home_page.dart';
+import '../dashboard/home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});

@@ -1,14 +1,14 @@
 // lib/pages/products_page.dart
 
 import 'package:flutter/material.dart';
-import 'product_sub_pages/product_list_page.dart';
-import 'product_sub_pages/approve_request_page.dart';
-import 'product_sub_pages/available_stock_page.dart';
-import 'product_sub_pages/item_history_page.dart';
-import 'product_sub_pages/stock_adjustment_page.dart';
-import 'product_sub_pages/category_list_page.dart';
-import 'product_sub_pages/unit_list_page.dart';
-import 'product_sub_pages/payee_list_page.dart'; // 1. ADD THIS IMPORT
+import 'product_list_page.dart';
+import '../finance/approve_request_page.dart';
+import '../inventory/available_stock_page.dart';
+import '../inventory/item_history_page.dart';
+import '../inventory/stock_adjustment_page.dart';
+import 'category_list_page.dart';
+import 'unit_list_page.dart';
+import '../people/payee_list_page.dart'; // 1. ADD THIS IMPORT
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});

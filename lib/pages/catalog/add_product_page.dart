@@ -1,5 +1,3 @@
-// lib/pages/product_sub_pages/add_product_page.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -18,31 +16,51 @@ class _AddProductPageState extends State<AddProductPage> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _basePriceController = TextEditingController();
-  final _categoryController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _stockController = TextEditingController(text: "0");
 
+  // Selection State
   String? _selectedStoreId;
+  String? _selectedCategoryId; // Changed from Text Controller to ID String
+
+  // Data Lists
   List<Map<String, dynamic>> _stores = [];
+  List<Map<String, dynamic>> _categories = []; // To store loaded categories
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadStores();
+    _loadInitialData();
   }
 
-  Future<void> _loadStores() async {
-    final data = await Supabase.instance.client.from('stores').select('id, name').order('name');
-    setState(() {
-      _stores = List<Map<String, dynamic>>.from(data);
-    });
+  // Load both Stores and Categories
+  Future<void> _loadInitialData() async {
+    final supabase = Supabase.instance.client;
+
+    // Run both queries in parallel
+    final results = await Future.wait([
+      supabase.from('stores').select('id, name').order('name'),
+      supabase.from('categories').select('id, name').order('name'),
+    ]);
+
+    if (mounted) {
+      setState(() {
+        _stores = List<Map<String, dynamic>>.from(results[0]);
+        _categories = List<Map<String, dynamic>>.from(results[1]);
+      });
+    }
   }
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
+
     if (_selectedStoreId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select a store branch")));
+      return;
+    }
+    if (_selectedCategoryId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select a category")));
       return;
     }
 
@@ -51,22 +69,23 @@ class _AddProductPageState extends State<AddProductPage> {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Insert Product (NO STOCK QUANTITY HERE)
+      // 1. Insert Product (Master Definition)
+      // REMOVED: 'store_id' (Products are global)
+      // UPDATED: 'category_id' instead of 'category' text
       final productRes = await supabase.from('products').insert({
         'sku': _skuController.text.trim(),
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'base_price': double.tryParse(_basePriceController.text.trim()) ?? 0.0,
-        // 'stock_quantity': REMOVED - We use inventory table now
-        'category': _categoryController.text.trim(),
+        'category_id': _selectedCategoryId, // Use the ID from dropdown
         'image_url': _imageUrlController.text.trim(),
-        'store_id': _selectedStoreId,
+        'is_active': true,
       }).select().single();
 
       final newProductId = productRes['id'];
       final int initialStock = int.tryParse(_stockController.text.trim()) ?? 0;
 
-      // 2. Insert into INVENTORY Table
+      // 2. Insert into INVENTORY (Links Product to Store)
       await supabase.from('inventory').insert({
         'store_id': _selectedStoreId,
         'product_id': newProductId,
@@ -74,7 +93,7 @@ class _AddProductPageState extends State<AddProductPage> {
       });
 
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(true); // Return true to trigger refresh on list page
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
@@ -114,7 +133,8 @@ class _AddProductPageState extends State<AddProductPage> {
                   const Text("Product Information", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 24),
 
-                  _buildLabel("Assign to Store Branch *"),
+                  // Store Selection
+                  _buildLabel("Assign Initial Stock to Store *"),
                   DropdownButtonFormField<String>(
                     dropdownColor: surfaceSlate,
                     value: _selectedStoreId,
@@ -139,7 +159,6 @@ class _AddProductPageState extends State<AddProductPage> {
                     children: [
                       Expanded(child: _buildTextField("Base Price (₱) *", _basePriceController, Icons.payments, (v) => v!.isEmpty ? "Required" : null, isNumber: true)),
                       const SizedBox(width: 20),
-                      // This field now populates the inventory table
                       Expanded(child: _buildTextField("Opening Stock (Inventory)", _stockController, Icons.inventory, null, isNumber: true)),
                     ],
                   ),
@@ -147,7 +166,24 @@ class _AddProductPageState extends State<AddProductPage> {
 
                   Row(
                     children: [
-                      Expanded(child: _buildTextField("Category", _categoryController, Icons.category, null)),
+                      // Category Dropdown (FIXED)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel("Category *"),
+                            DropdownButtonFormField<String>(
+                              dropdownColor: surfaceSlate,
+                              value: _selectedCategoryId,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: _inputDecoration(Icons.category),
+                              items: _categories.map((c) => DropdownMenuItem(value: c['id'].toString(), child: Text(c['name']))).toList(),
+                              onChanged: (v) => setState(() => _selectedCategoryId = v),
+                              validator: (v) => v == null ? "Required" : null,
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(width: 20),
                       Expanded(child: _buildTextField("Image URL", _imageUrlController, Icons.image, null)),
                     ],

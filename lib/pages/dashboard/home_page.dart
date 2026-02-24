@@ -2,14 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../utils/user_role.dart';
-import 'employee_management_page.dart';
-import 'customer_management_page.dart';
-import 'login_page.dart';
-import 'checks_dashboard_page.dart';
-import 'store_management_page.dart';
-import 'products_page.dart';
-import 'manage_payments_page.dart'; // Import added
+import '../../utils/user_role.dart';
+import '../people/employee_management_page.dart';
+import '../people/customer_management_page.dart';
+import '../auth/login_page.dart';
+import '../finance/checks_dashboard_page.dart';
+import '../store/store_management_page.dart';
+import '../catalog/products_page.dart';
+import '../finance/manage_payments_page.dart'; // Import added
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

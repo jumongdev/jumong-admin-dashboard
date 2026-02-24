@@ -1,5 +1,5 @@
 // lib/pages/product_sub_pages/product_list_page.dart
-
+//dashboard > Product Management > Catalog
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -21,15 +21,16 @@ class _ProductListPageState extends State<ProductListPage> {
 
   // Filter States
   final _searchController = TextEditingController();
-  String? _filterStoreId;
   String? _filterCategoryId;
+  String? _filterPayeeId;
+  String _filterStatus = 'Active';
 
   // Data Cache
   List<Map<String, dynamic>> _allProducts = [];
   List<Map<String, dynamic>> _filteredProducts = [];
-  List<Map<String, dynamic>> _stores = [];
   List<Map<String, dynamic>> _categories = [];
-  // REMOVED: _payees field was unused
+  List<Map<String, dynamic>> _payees = [];
+
   bool _isLoading = true;
 
   @override
@@ -52,13 +53,11 @@ class _ProductListPageState extends State<ProductListPage> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final storesRes = await supabase.from('stores').select('id, name').order('name');
       final catsRes = await supabase.from('categories').select('id, name').order('name');
-      final payeesRes = await supabase.from('payees').select('id, name').order('name'); // NEW
+      final payeesRes = await supabase.from('payees').select('id, name').order('name');
 
       final productsRes = await supabase.from('products').select('''
             *,
-            stores(name),
             categories(name),
             units(name),
             payees(name),
@@ -68,9 +67,8 @@ class _ProductListPageState extends State<ProductListPage> {
       if (!mounted) return;
 
       setState(() {
-        _stores = List<Map<String, dynamic>>.from(storesRes);
         _categories = List<Map<String, dynamic>>.from(catsRes);
-        // REMOVED: _payees assignment (unused)
+        _payees = List<Map<String, dynamic>>.from(payeesRes);
         _allProducts = List<Map<String, dynamic>>.from(productsRes);
         _applyFilters();
         _isLoading = false;
@@ -87,9 +85,19 @@ class _ProductListPageState extends State<ProductListPage> {
         final query = _searchController.text.toLowerCase();
         final matchesSearch = p['name'].toString().toLowerCase().contains(query) ||
             p['sku'].toString().toLowerCase().contains(query);
-        final matchesStore = _filterStoreId == null || p['store_id'].toString() == _filterStoreId;
+
         final matchesCategory = _filterCategoryId == null || p['category_id'].toString() == _filterCategoryId;
-        return matchesSearch && matchesStore && matchesCategory;
+        final matchesPayee = _filterPayeeId == null || p['payee_id'].toString() == _filterPayeeId;
+
+        final bool isActive = p['is_active'] ?? true;
+        bool matchesStatus = true;
+        if (_filterStatus == 'Active') {
+          matchesStatus = isActive == true;
+        } else if (_filterStatus == 'Archived') {
+          matchesStatus = isActive == false;
+        }
+
+        return matchesSearch && matchesCategory && matchesPayee && matchesStatus;
       }).toList();
     });
   }
@@ -106,6 +114,7 @@ class _ProductListPageState extends State<ProductListPage> {
       backgroundColor: backgroundDeep,
       body: Column(
         children: [
+          // === HEADER SECTION ===
           Container(
             padding: const EdgeInsets.all(16),
             color: surfaceSlate,
@@ -119,8 +128,8 @@ class _ProductListPageState extends State<ProductListPage> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Search name or barcode...",
-                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
-                      prefixIcon: const Icon(Icons.search, color: primaryIndigo, size: 20),
+                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+                      prefixIcon: const Icon(Icons.search, color: primaryIndigo, size: 18),
                       filled: true,
                       fillColor: backgroundDeep,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
@@ -128,30 +137,77 @@ class _ProductListPageState extends State<ProductListPage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   flex: 2,
-                  child: _buildFilterDropdown("All Stores", _stores, _filterStoreId, (val) {
-                    setState(() => _filterStoreId = val);
-                    _applyFilters();
-                  }),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: _buildFilterDropdown("All Categories", _categories, _filterCategoryId, (val) {
+                  child: _buildFilterDropdown("Category", _categories, _filterCategoryId, (val) {
                     setState(() => _filterCategoryId = val);
                     _applyFilters();
                   }),
                 ),
                 const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: _buildFilterDropdown("Supplier", _payees, _filterPayeeId, (val) {
+                    setState(() => _filterPayeeId = val);
+                    _applyFilters();
+                  }),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: backgroundDeep,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _filterStatus,
+                        dropdownColor: surfaceSlate,
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        isExpanded: true,
+                        icon: const Icon(Icons.filter_list, color: primaryIndigo, size: 18),
+                        items: const [
+                          DropdownMenuItem(value: 'Active', child: Text("Active Only")),
+                          DropdownMenuItem(value: 'Archived', child: Text("Archived Only")),
+                          DropdownMenuItem(value: 'All', child: Text("All Statuses")),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _filterStatus = val);
+                            _applyFilters();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: primaryIndigo.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: primaryIndigo.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    "Items: ${_filteredProducts.length}",
+                    style: const TextStyle(color: primaryIndigo, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 IconButton(
                   onPressed: _refresh,
                   icon: const Icon(Icons.refresh, color: Colors.white54),
+                  tooltip: "Refresh List",
                 )
               ],
             ),
           ),
+          // === LIST SECTION ===
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: primaryIndigo))
@@ -164,81 +220,66 @@ class _ProductListPageState extends State<ProductListPage> {
                 final p = _filteredProducts[i];
                 final List rules = p['price_rules'] ?? [];
                 final bool hasWholesale = rules.isNotEmpty;
+                final bool isActive = p['is_active'] ?? true;
 
                 return Card(
-                  color: surfaceSlate,
+                  color: isActive ? surfaceSlate : const Color(0xFF282222),
                   margin: const EdgeInsets.only(bottom: 10),
                   clipBehavior: Clip.antiAlias,
                   child: ExpansionTile(
                     iconColor: primaryIndigo,
                     collapsedIconColor: Colors.white24,
                     leading: Icon(
-                        hasWholesale ? Icons.auto_awesome : Icons.inventory_2,
-                        color: hasWholesale ? Colors.orangeAccent : primaryIndigo),
+                        isActive ? (hasWholesale ? Icons.auto_awesome : Icons.inventory_2) : Icons.archive,
+                        color: isActive ? (hasWholesale ? Colors.orangeAccent : primaryIndigo) : Colors.grey),
                     title: Row(
                       children: [
                         Expanded(
-                          child: Text(p['name'] ?? 'No Name',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            p['name'] ?? 'No Name',
+                            style: TextStyle(
+                                color: isActive ? Colors.white : Colors.white38,
+                                fontWeight: FontWeight.bold,
+                                decoration: isActive ? null : TextDecoration.lineThrough),
+                          ),
                         ),
-                        if (hasWholesale)
+                        if (hasWholesale && isActive)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            margin: const EdgeInsets.only(right: 6),
                             decoration: BoxDecoration(
                                 color: Colors.orangeAccent.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3))),
                             child: const Text("WHOLESALE",
-                                style: TextStyle(
-                                    color: Colors.orangeAccent, fontSize: 8, fontWeight: FontWeight.bold)),
+                                style: TextStyle(color: Colors.orangeAccent, fontSize: 8, fontWeight: FontWeight.bold)),
+                          ),
+                        if (!isActive)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.red.withValues(alpha: 0.3))),
+                            child: const Text("ARCHIVED",
+                                style: TextStyle(color: Colors.redAccent, fontSize: 8, fontWeight: FontWeight.bold)),
                           ),
                       ],
                     ),
-                    subtitle: Text("${p['stores']?['name'] ?? 'N/A'} | SKU: ${p['sku']} | Supp: ${p['payees']?['name'] ?? 'None'}",
+                    subtitle: Text("SKU: ${p['sku']} | Supp: ${p['payees']?['name'] ?? 'None'}",
                         style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     trailing: Text("₱${(p['base_price'] as num? ?? 0).toStringAsFixed(2)}",
-                        style: const TextStyle(
-                            color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 15)),
+                        style: TextStyle(
+                            color: isActive ? Colors.greenAccent : Colors.white38,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15)),
                     children: [
-                      if (hasWholesale) ...[
-                        const Divider(color: Colors.white10, height: 1),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          color: Colors.black12,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text("WHOLESALE TIERS",
-                                  style: TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1)),
-                              const SizedBox(height: 8),
-                              ...rules.map((rule) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text("Min ${rule['min_quantity']} ${rule['units']?['name'] ?? ''}",
-                                        style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                                    Text("₱${(rule['unit_price'] as num? ?? 0).toStringAsFixed(2)}",
-                                        style: const TextStyle(
-                                            color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              )),
-                            ],
-                          ),
-                        ),
-                      ],
                       Container(
                         color: Colors.white.withValues(alpha: 0.02),
                         child: ListTile(
                           dense: true,
                           leading: const Icon(Icons.edit, size: 16, color: Colors.white38),
-                          title: const Text("Edit Product Details or Rules",
+                          title: const Text("Edit Details, Status or Rules",
                               style: TextStyle(color: Colors.white38, fontSize: 12)),
                           onTap: () => _editProduct(p),
                         ),
@@ -251,6 +292,39 @@ class _ProductListPageState extends State<ProductListPage> {
           ),
         ],
       ),
+
+      // === SITEMAP FOOTER SECTION ===
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: const BoxDecoration(
+          color: surfaceSlate,
+          border: Border(top: BorderSide(color: Colors.white10, width: 1)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.account_tree_outlined, color: Colors.white24, size: 14),
+            const SizedBox(width: 8),
+            Text(
+              "Dashboard > Product Management > Catalog",
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.3),
+                fontSize: 10,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              "Items: ${_filteredProducts.length}",
+              style: TextStyle(
+                color: primaryIndigo.withValues(alpha: 0.5),
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryIndigo,
         onPressed: () => _showAddProductDialog(),
@@ -259,39 +333,45 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
+  // --- HELPER WIDGETS & METHODS ---
+
   Widget _buildFilterDropdown(String hint, List<Map<String, dynamic>> items, String? value, Function(String?) onChanged) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      dropdownColor: const Color(0xFF1E293B),
-      style: const TextStyle(color: Colors.white, fontSize: 13),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: const Color(0xFF0F172A),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
       ),
-      hint: Text(hint, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-      items: [
-        DropdownMenuItem<String>(value: null, child: Text(hint)),
-        ...items.map((item) => DropdownMenuItem<String>(
-          value: item['id'].toString(),
-          child: Text(item['name'] ?? ''),
-        )),
-      ],
-      onChanged: onChanged,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          dropdownColor: const Color(0xFF1E293B),
+          isExpanded: true,
+          hint: Text(hint, style: const TextStyle(color: Colors.white54, fontSize: 12), overflow: TextOverflow.ellipsis),
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF6366F1), size: 18),
+          items: [
+            DropdownMenuItem<String>(value: null, child: Text("All $hint")),
+            ...items.map((item) => DropdownMenuItem<String>(
+              value: item['id'].toString(),
+              child: Text(item['name'] ?? '', overflow: TextOverflow.ellipsis),
+            )),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 
   void _editProduct(Map<String, dynamic> product) async {
-    final String currentSku = product['sku'];
+    final String productId = product['id'].toString();
     try {
-      final instances = await supabase.from('products').select('id, store_id').eq('sku', currentSku);
-      final rulesRes =
-      await supabase.from('price_rules').select('*, units(name)').eq('product_id', instances.first['id']);
-      List<String> assignedStoreIds = instances.map((item) => item['store_id'].toString()).toList();
+      final rulesRes = await supabase.from('price_rules').select('*, units(name)').eq('product_id', productId);
+      final invRes = await supabase.from('inventory').select('store_id').eq('product_id', productId);
+      List<String> assignedStoreIds = invRes.map((r) => r['store_id'].toString()).toList();
 
       if (!context.mounted) return;
-
       _showAddProductDialog(
         isEditing: true,
         existingProduct: product,
@@ -312,36 +392,40 @@ class _ProductListPageState extends State<ProductListPage> {
     final storesRes = await supabase.from('stores').select('id, name').order('name');
     final catsRes = await supabase.from('categories').select('id, name').order('name');
     final unitsRes = await supabase.from('units').select('id, name').order('name');
-    final payeesRes = await supabase.from('payees').select('id, name').order('name'); // NEW
+    final payeesRes = await supabase.from('payees').select('id, name').order('name');
 
     if (!context.mounted) return;
 
     final allStores = List<Map<String, dynamic>>.from(storesRes);
     final allCategories = List<Map<String, dynamic>>.from(catsRes);
     final allUnits = List<Map<String, dynamic>>.from(unitsRes);
-    final allPayees = List<Map<String, dynamic>>.from(payeesRes); // NEW
+    final allPayees = List<Map<String, dynamic>>.from(payeesRes);
 
     List<Map<String, dynamic>> tempRules = List.from(existingRules ?? []);
+    bool isActive = true;
 
     if (isEditing && existingProduct != null) {
       _skuController.text = existingProduct['sku'] ?? '';
       _nameController.text = existingProduct['name'] ?? '';
       _priceController.text = (existingProduct['base_price'] ?? 0).toString();
       _costController.text = (existingProduct['cost_price'] ?? 0).toString();
+      isActive = existingProduct['is_active'] ?? true;
     } else {
       _skuController.clear();
       _nameController.clear();
       _priceController.clear();
       _costController.clear();
+      isActive = true;
     }
 
     String? selectedCategoryId = isEditing ? existingProduct!['category_id']?.toString() : null;
     String? selectedUnitId = isEditing ? existingProduct!['unit_id']?.toString() : null;
-    int? selectedPayeeId = isEditing ? (existingProduct!['payee_id'] as int?) : null; // NEW
+    int? selectedPayeeId = isEditing ? (existingProduct!['payee_id'] as int?) : null;
 
+    final safeInitialStores = initialAssignedStores ?? [];
     Map<String, bool> selectedStores = {
       for (var s in allStores)
-        s['id'].toString(): isEditing ? (initialAssignedStores?.contains(s['id'].toString()) ?? false) : false
+        s['id'].toString(): isEditing ? safeInitialStores.contains(s['id'].toString()) : false
     };
 
     showDialog(
@@ -350,8 +434,29 @@ class _ProductListPageState extends State<ProductListPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: Text(isEditing ? "Edit & Sync Master Product" : "Add Master Product",
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(isEditing ? "Edit Master Product" : "Add Master Product",
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  Text(isActive ? "Active" : "Archived",
+                      style: TextStyle(color: isActive ? Colors.greenAccent : Colors.redAccent, fontSize: 12)),
+                  Switch(
+                    value: isActive,
+                    // FIXED: activeColor is deprecated. Using activeTrackColor + thumbColor.
+                    activeTrackColor: Colors.greenAccent,
+                    inactiveTrackColor: Colors.red.withValues(alpha: 0.3),
+                    thumbColor: WidgetStateProperty.all(Colors.white),
+                    onChanged: (val) {
+                      setDialogState(() => isActive = val);
+                    },
+                  ),
+                ],
+              )
+            ],
+          ),
           content: SizedBox(
             width: 950,
             child: SingleChildScrollView(
@@ -364,52 +469,45 @@ class _ProductListPageState extends State<ProductListPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _sectionTitle("PRIMARY DETAILS"),
-                        _dialogField("SKU / Barcode", _skuController, Icons.qr_code, enabled: !isEditing),
+                        _dialogField("SKU / Barcode", _skuController, Icons.qr_code, enabled: true),
                         _dialogField("Product Name", _nameController, Icons.label),
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            Expanded(
-                                child: _dialogField("Cost Price", _costController, Icons.account_balance_wallet,
-                                    isNumber: true)),
+                            Expanded(child: _dialogField("Cost Price", _costController, Icons.account_balance_wallet, isNumber: true)),
                             const SizedBox(width: 15),
-                            Expanded(
-                                child: _dialogField("Selling Price", _priceController, Icons.payments, isNumber: true)),
+                            Expanded(child: _dialogField("Selling Price", _priceController, Icons.payments, isNumber: true)),
                           ],
                         ),
                         const SizedBox(height: 20),
                         _sectionTitle("CATEGORIZATION & SUPPLIER"),
+                        // FIXED: Replaced 'value' with 'initialValue'
                         DropdownButtonFormField<String>(
                           initialValue: selectedCategoryId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Category", Icons.category),
-                          items: allCategories
-                              .map((cat) => DropdownMenuItem(value: cat['id'].toString(), child: Text(cat['name'])))
-                              .toList(),
+                          items: allCategories.map((cat) => DropdownMenuItem(value: cat['id'].toString(), child: Text(cat['name']))).toList(),
                           onChanged: (val) => setDialogState(() => selectedCategoryId = val),
                         ),
                         const SizedBox(height: 15),
+                        // FIXED: Replaced 'value' with 'initialValue'
                         DropdownButtonFormField<String>(
                           initialValue: selectedUnitId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Base Unit", Icons.straighten),
-                          items: allUnits
-                              .map((u) => DropdownMenuItem(value: u['id'].toString(), child: Text(u['name'])))
-                              .toList(),
+                          items: allUnits.map((u) => DropdownMenuItem(value: u['id'].toString(), child: Text(u['name']))).toList(),
                           onChanged: (val) => setDialogState(() => selectedUnitId = val),
                         ),
                         const SizedBox(height: 15),
-                        // NEW: Supplier Dropdown
+                        // FIXED: Replaced 'value' with 'initialValue'
                         DropdownButtonFormField<int>(
                           initialValue: selectedPayeeId,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputStyle("Supplier / Payee", Icons.business_center_outlined),
-                          items: allPayees
-                              .map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name'])))
-                              .toList(),
+                          items: allPayees.map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name']))).toList(),
                           onChanged: (val) => setDialogState(() => selectedPayeeId = val),
                         ),
                       ],
@@ -426,21 +524,16 @@ class _ProductListPageState extends State<ProductListPage> {
                         _sectionTitle("WHOLESALE PRICE RULES"),
                         Container(
                           height: 200,
-                          decoration:
-                          BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
                           child: ListView(
                             children: [
                               ...tempRules.map((rule) => ListTile(
                                 dense: true,
-                                title: Text(
-                                    "${rule['min_quantity']}+ ${rule['units']?['name'] ?? rule['unit_name'] ?? ''}",
-                                    style: const TextStyle(color: Colors.white)),
+                                title: Text("${rule['min_quantity']}+ ${rule['units']?['name'] ?? rule['unit_name'] ?? ''}", style: const TextStyle(color: Colors.white)),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text("₱${(rule['unit_price'] as num? ?? 0).toStringAsFixed(2)}",
-                                        style: const TextStyle(
-                                            color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                    Text("₱${(rule['unit_price'] as num? ?? 0).toStringAsFixed(2)}", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                                       onPressed: () => setDialogState(() => tempRules.remove(rule)),
@@ -448,18 +541,11 @@ class _ProductListPageState extends State<ProductListPage> {
                                   ],
                                 ),
                               )),
-                              if (tempRules.isEmpty)
-                                const Center(
-                                    child: Padding(
-                                        padding: EdgeInsets.all(20),
-                                        child: Text("No wholesale rules set",
-                                            style: TextStyle(color: Colors.white24)))),
                             ],
                           ),
                         ),
                         TextButton.icon(
-                          onPressed: () => _addPriceRulePopup(
-                              context, allUnits, (newRule) => setDialogState(() => tempRules.add(newRule))),
+                          onPressed: () => _addPriceRulePopup(context, allUnits, (newRule) => setDialogState(() => tempRules.add(newRule))),
                           icon: const Icon(Icons.add_circle_outline, color: Color(0xFF6366F1)),
                           label: const Text("Add Wholesale Price", style: TextStyle(color: Color(0xFF6366F1))),
                         ),
@@ -467,17 +553,14 @@ class _ProductListPageState extends State<ProductListPage> {
                         _sectionTitle("STORE AVAILABILITY"),
                         Container(
                           height: 150,
-                          decoration:
-                          BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
                           child: ListView(
                             children: [
                               ...allStores.map((store) => CheckboxListTile(
                                 activeColor: const Color(0xFF6366F1),
-                                title: Text(store['name'],
-                                    style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                                title: Text(store['name'], style: const TextStyle(color: Colors.white70, fontSize: 14)),
                                 value: selectedStores[store['id'].toString()],
-                                onChanged: (val) =>
-                                    setDialogState(() => selectedStores[store['id'].toString()] = val!),
+                                onChanged: (val) => setDialogState(() => selectedStores[store['id'].toString()] = val!),
                               )),
                             ],
                           ),
@@ -492,118 +575,79 @@ class _ProductListPageState extends State<ProductListPage> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white38))),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20)),
               onPressed: () async {
                 final String sku = _skuController.text.trim();
                 final currentSelectedIds = selectedStores.entries.where((e) => e.value).map((e) => e.key).toList();
 
-                if (sku.isEmpty || currentSelectedIds.isEmpty) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text("SKU and at least one store are required")));
-                  }
+                if (sku.isEmpty) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("SKU is required")));
                   return;
                 }
 
                 try {
-                  final existing = await supabase
-                      .from('products')
-                      .select('sku, name, stores(name)')
-                      .eq('sku', sku)
-                      .limit(1)
-                      .maybeSingle();
+                  var duplicateQuery = supabase.from('products').select('id, name').eq('sku', sku);
+                  if (isEditing) duplicateQuery = duplicateQuery.neq('id', existingProduct!['id']);
+                  final duplicateRes = await duplicateQuery.maybeSingle();
 
-                  if (existing != null) {
-                    bool isSameProduct = isEditing && existing['sku'] == existingProduct?['sku'];
-                    if (!isSameProduct) {
-                      if (context.mounted) {
-                        showDialog(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: const Color(0xFF1E293B),
-                            title: const Text("Duplicate Barcode", style: TextStyle(color: Colors.redAccent)),
-                            content: Text(
-                                "Barcode '$sku' already exists!\n\nProduct: ${existing['name']}\nStore: ${existing['stores']['name']}\n\nPlease use a unique barcode."),
-                            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
-                          ),
-                        );
-                      }
-                      return;
-                    }
+                  // FIXED: Async Gap Check
+                  if (!context.mounted) return;
+
+                  if (duplicateRes != null) {
+                    showDialog(context: context, builder: (ctx) => AlertDialog(content: Text("Barcode exists on '${duplicateRes['name']}'")));
+                    return;
                   }
 
                   if (isEditing) {
-                    final toRemove = initialAssignedStores!.where((id) => !currentSelectedIds.contains(id)).toList();
-                    if (toRemove.isNotEmpty) {
-                      await supabase.from('products').delete().eq('sku', sku).inFilter('store_id', toRemove);
-                    }
-
-                    final toAdd = currentSelectedIds.where((id) => !initialAssignedStores.contains(id)).toList();
-                    if (toAdd.isNotEmpty) {
-                      final List<Map<String, dynamic>> newRows = toAdd
-                          .map((sId) => {
-                        'sku': sku,
-                        'name': _nameController.text.trim(),
-                        'cost_price': double.tryParse(_costController.text) ?? 0.0,
-                        'base_price': double.tryParse(_priceController.text) ?? 0.0,
-                        'category_id': selectedCategoryId,
-                        'unit_id': selectedUnitId,
-                        'payee_id': selectedPayeeId, // NEW
-                        'store_id': sId,
-                        'stock_quantity': 0,
-                      })
-                          .toList();
-                      await supabase.from('products').insert(newRows);
-                    }
-
+                    final String productId = existingProduct!['id'].toString();
                     await supabase.from('products').update({
-                      'name': _nameController.text.trim(),
-                      'cost_price': double.tryParse(_costController.text) ?? 0.0,
-                      'base_price': double.tryParse(_priceController.text) ?? 0.0,
-                      'category_id': selectedCategoryId,
-                      'unit_id': selectedUnitId,
-                      'payee_id': selectedPayeeId, // NEW
-                    }).eq('sku', sku);
-                  } else {
-                    final List<Map<String, dynamic>> toInsert = currentSelectedIds
-                        .map((sId) => {
                       'sku': sku,
                       'name': _nameController.text.trim(),
                       'cost_price': double.tryParse(_costController.text) ?? 0.0,
                       'base_price': double.tryParse(_priceController.text) ?? 0.0,
                       'category_id': selectedCategoryId,
                       'unit_id': selectedUnitId,
-                      'payee_id': selectedPayeeId, // NEW
-                      'store_id': sId,
-                      'stock_quantity': 0,
-                    })
-                        .toList();
-                    await supabase.from('products').insert(toInsert);
-                  }
+                      'payee_id': selectedPayeeId,
+                      'is_active': isActive,
+                    }).eq('id', productId);
 
-                  final updatedProducts = await supabase.from('products').select('id').eq('sku', sku);
+                    final toRemove = safeInitialStores.where((id) => !currentSelectedIds.contains(id)).toList();
+                    if (toRemove.isNotEmpty) await supabase.from('inventory').delete().eq('product_id', productId).inFilter('store_id', toRemove);
 
-                  if (!context.mounted) return;
-
-                  final List<String> pIds = updatedProducts.map((p) => p['id'].toString()).toList();
-                  await supabase.from('price_rules').delete().inFilter('product_id', pIds);
-
-                  if (tempRules.isNotEmpty) {
-                    List<Map<String, dynamic>> rulesToInsert = [];
-                    for (var pid in pIds) {
-                      for (var rule in tempRules) {
-                        rulesToInsert.add({
-                          'product_id': pid,
-                          'unit_id': rule['unit_id'],
-                          'min_quantity': rule['min_quantity'],
-                          'unit_price': rule['unit_price'],
-                        });
-                      }
+                    final toAdd = currentSelectedIds.where((id) => !safeInitialStores.contains(id)).toList();
+                    if (toAdd.isNotEmpty) {
+                      final List<Map<String, dynamic>> newInv = toAdd.map((sId) => {'store_id': sId, 'product_id': productId, 'stock_quantity': 0}).toList();
+                      await supabase.from('inventory').upsert(newInv).select();
                     }
-                    await supabase.from('price_rules').insert(rulesToInsert);
+
+                    await supabase.from('price_rules').delete().eq('product_id', productId);
+                    if (tempRules.isNotEmpty) {
+                      final rules = tempRules.map((r) => {'product_id': productId, 'unit_id': r['unit_id'], 'min_quantity': r['min_quantity'], 'unit_price': r['unit_price']}).toList();
+                      await supabase.from('price_rules').insert(rules);
+                    }
+                  } else {
+                    final newProduct = await supabase.from('products').insert({
+                      'sku': sku,
+                      'name': _nameController.text.trim(),
+                      'cost_price': double.tryParse(_costController.text) ?? 0.0,
+                      'base_price': double.tryParse(_priceController.text) ?? 0.0,
+                      'category_id': selectedCategoryId,
+                      'unit_id': selectedUnitId,
+                      'payee_id': selectedPayeeId,
+                      'is_active': isActive,
+                    }).select().single();
+
+                    final newPid = newProduct['id'];
+
+                    if (currentSelectedIds.isNotEmpty) {
+                      final List<Map<String, dynamic>> invRows = currentSelectedIds.map((sId) => {'store_id': sId, 'product_id': newPid, 'stock_quantity': 0}).toList();
+                      await supabase.from('inventory').upsert(invRows).select();
+                    }
+
+                    if (tempRules.isNotEmpty) {
+                      final rules = tempRules.map((r) => {'product_id': newPid, 'unit_id': r['unit_id'], 'min_quantity': r['min_quantity'], 'unit_price': r['unit_price']}).toList();
+                      await supabase.from('price_rules').insert(rules);
+                    }
                   }
 
                   if (context.mounted) {
@@ -612,10 +656,10 @@ class _ProductListPageState extends State<ProductListPage> {
                   }
                 } catch (e) {
                   debugPrint("Save Error: $e");
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
                 }
               },
-              child: Text(isEditing ? "Save & Sync" : "Create Master Product",
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              child: Text(isEditing ? "Save & Sync" : "Create Master Product", style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -627,8 +671,6 @@ class _ProductListPageState extends State<ProductListPage> {
     final qtyController = TextEditingController();
     final priceController = TextEditingController();
     String? selectedUnitId;
-
-    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -645,9 +687,7 @@ class _ProductListPageState extends State<ProductListPage> {
                 dropdownColor: const Color(0xFF1E293B),
                 style: const TextStyle(color: Colors.white),
                 decoration: _inputStyle("Unit", Icons.straighten),
-                items: allUnits
-                    .map((u) => DropdownMenuItem(value: u['id'].toString(), child: Text(u['name'])))
-                    .toList(),
+                items: allUnits.map((u) => DropdownMenuItem(value: u['id'].toString(), child: Text(u['name']))).toList(),
                 onChanged: (val) => setIntState(() => selectedUnitId = val),
               ),
               const SizedBox(height: 10),
@@ -660,12 +700,7 @@ class _ProductListPageState extends State<ProductListPage> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
               onPressed: () {
                 if (qtyController.text.isNotEmpty && priceController.text.isNotEmpty && selectedUnitId != null) {
-                  onSave({
-                    'unit_id': selectedUnitId,
-                    'min_quantity': int.parse(qtyController.text),
-                    'unit_price': double.parse(priceController.text),
-                    'unit_name': allUnits.firstWhere((u) => u['id'].toString() == selectedUnitId.toString())['name'],
-                  });
+                  onSave({'unit_id': selectedUnitId, 'min_quantity': int.parse(qtyController.text), 'unit_price': double.parse(priceController.text), 'unit_name': allUnits.firstWhere((u) => u['id'].toString() == selectedUnitId.toString())['name']});
                   Navigator.pop(context);
                 }
               },
@@ -677,37 +712,26 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12, top: 5),
-      child: Text(title,
-          style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)),
-    );
-  }
+  Widget _sectionTitle(String title) => Padding(padding: const EdgeInsets.only(bottom: 12, top: 5), child: Text(title, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.2)));
 
-  Widget _dialogField(String label, TextEditingController ctrl, IconData icon,
-      {bool enabled = true, bool isNumber = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: ctrl,
-        enabled: enabled,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-        style: TextStyle(color: enabled ? Colors.white : Colors.white24),
-        decoration: _inputStyle(label, icon),
-      ),
-    );
-  }
+  Widget _dialogField(String label, TextEditingController ctrl, IconData icon, {bool enabled = true, bool isNumber = false}) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: ctrl,
+      enabled: enabled,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: TextStyle(color: enabled ? Colors.white : Colors.white24),
+      decoration: _inputStyle(label, icon),
+    ),
+  );
 
-  InputDecoration _inputStyle(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white38, fontSize: 13),
-      prefixIcon: Icon(icon, color: const Color(0xFF6366F1), size: 18),
-      filled: true,
-      fillColor: const Color(0xFF0F172A),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-      contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 12),
-    );
-  }
+  InputDecoration _inputStyle(String label, IconData icon) => InputDecoration(
+    labelText: label,
+    labelStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+    prefixIcon: Icon(icon, color: const Color(0xFF6366F1), size: 18),
+    filled: true,
+    fillColor: const Color(0xFF0F172A),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+    contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 12),
+  );
 }

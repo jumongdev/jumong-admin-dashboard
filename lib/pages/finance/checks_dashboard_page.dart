@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
-import '../models/check_model.dart';
+import '../../models/check_model.dart';
 import 'add_check_page.dart';
 import 'check_history_page.dart';
 

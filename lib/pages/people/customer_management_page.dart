@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../app_colors.dart'; // Using your existing colors
+import '../../app_colors.dart'; // Using your existing colors
 
 class CustomerManagementPage extends StatefulWidget {
   const CustomerManagementPage({super.key});

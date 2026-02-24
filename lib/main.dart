@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Import the page files you will create in your 'pages' folder
-import 'pages/home_page.dart';
-import 'pages/login_page.dart';
+import 'pages/dashboard/home_page.dart';
+import 'pages/auth/login_page.dart';
 
 Future<void> main() async {
   // Ensure that Flutter bindings are initialized before running any other code.
